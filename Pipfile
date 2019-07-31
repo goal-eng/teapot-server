@@ -9,6 +9,7 @@ verify_ssl = true
 japronto = "*"
 click = "*"
 requests = "*"
+pyflakes = "*"
 
 [requires]
 python_version = "3.6"
