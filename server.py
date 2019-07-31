@@ -7,8 +7,8 @@ import click
 
 
 # Configuration
-START_NUMBER = os.environ.get('START_NUMBER', 0)
-MIN_REQUESTS_COUNT = os.environ.get('MIN_REQUEST_COUNT', 20)
+START_NUMBER = os.environ['START_NUMBER']
+MIN_REQUESTS_COUNT = os.environ['MIN_REQUEST_COUNT']
 TEA_CONTENT_TYPE = 'message/teapot'
 TEA_VARIANTS = [
     'english-breakfast',
