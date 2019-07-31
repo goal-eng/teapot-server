@@ -17,12 +17,10 @@ TEA_VARIANTS = [
 
 
 def create_alternates():
-    items = []
-    for variant in TEA_VARIANTS:
-        items.append(
-            f'{{"/{variant}" {{type {TEA_CONTENT_TYPE}}}}}'
-        )
-    return ', '.join(items)
+    return ', '.join(
+        f'{{"/{variant}" {{type {TEA_CONTENT_TYPE}}}}}'
+        for variant in TEA_VARIANTS
+    )
 
 
 TEA_ALTERNATES = create_alternates()
