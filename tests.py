@@ -13,6 +13,11 @@ dotenv.load_dotenv('.env.test', override=True)
 import server
 
 
+def sleep_to_next_second():
+    time_left_to_next_second = int(time.time() + 1) - time.time()
+    time.sleep(time_left_to_next_second)
+
+
 class TestTrafficCounter(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -21,10 +26,6 @@ class TestTrafficCounter(unittest.TestCase):
                 self.remote_addr = remote_addr
 
         cls.FakeRequest = FakeRequest
-
-    def sleep_to_next_second(self):
-        time_left_to_next_second = int(time.time() + 1) - time.time()
-        time.sleep(time_left_to_next_second)
 
     def create_threads_to_increase_traffic(self, threads_count, request_ip, tea_variant, results_list):
         return [
@@ -37,7 +38,7 @@ class TestTrafficCounter(unittest.TestCase):
         ]
 
     def run_threads_with_next_second(self, threads):
-        self.sleep_to_next_second()
+        sleep_to_next_second()
         [t.start() for t in threads]
         [t.join() for t in threads]
 
@@ -113,31 +114,38 @@ class TestTrafficCounter(unittest.TestCase):
 class TestServer(unittest.TestCase):
     SERVER_EXE_PATH = 'server.py'
 
-    @classmethod
-    def setUpClass(cls):
-        cls.host = '0.0.0.0'
-        cls.port = '9999'
-        cls.base_url = f'http://{cls.host}:{cls.port}'
+    def setUp(self):
+        self.host = '0.0.0.0'
+        self.port = '9999'
+        self.base_url = f'http://{self.host}:{self.port}'
 
-        server_process = subprocess.Popen([
-            'python',
-            'server.py',
-            f'--host={cls.host}',
-            f'--port={cls.port}',
-        ])
-        cls.server_process = server_process
-        time.sleep(1)
-        assert server_process.poll() is None
+        server_process = subprocess.Popen(
+            args=[
+                'python',
+                'server.py',
+                f'--host={self.host}',
+                f'--port={self.port}',
+                '--debug'
+            ],
+        )
+        self.server_process = server_process
 
-    @classmethod
-    def tearDownClass(cls):
-        cls.server_process.send_signal(15)
-        cls.server_process.wait()
+        for _ in range(100):
+            try:
+                self.request('GET', '/')
+            except requests.ConnectionError:
+                time.sleep(0.05)
+                continue
+            else:
+                break
+
+    def tearDown(self):
+        self.server_process.send_signal(15)
+        self.server_process.wait()
 
     def request(self, method, endpoint, **kwargs):
         url = f'{self.base_url}{endpoint}'
-        print('url =', url)
-        return requests.request(method.upper(), url, timeout=3, **kwargs)
+        return requests.request(method.upper(), url, timeout=None, **kwargs)
 
     def test_invalid_method(self):
         bad_requests = [
@@ -172,14 +180,13 @@ class TestServer(unittest.TestCase):
             response.status_code,
             300
         )
-
         self.assertEqual(
             response.headers['Alternates'],
             '{"/english-breakfast" {type message/teapot}}, '
             '{"/earl-grey" {type message/teapot}}'
         )
 
-    def test_brew_tea_start_unsupported_tea(self):
+    def test_start_brew_unsupported_tea(self):
         response = self.request(
             'BREW',
             '/unsupported-tea',
@@ -196,7 +203,127 @@ class TestServer(unittest.TestCase):
             b'"unsupported-tea" is not supported for this pot'
         )
 
-    def test_brew_tea_start_too_little_traffic(self):
+    def test_start_brew_english_breakfast_successfully(self):
+        response = self.request(
+            'BREW',
+            '/english-breakfast',
+            data='start',
+            headers={'Content-Type': 'message/teapot'}
+        )
+
+        self.assertEqual(
+            response.status_code,
+            202
+        )
+        self.assertEqual(
+            response.content,
+            b'Brewing'
+        )
+
+    def test_start_brew_english_breakfast_but_its_busy(self):
+        for _ in range(2):
+            response = self.request(
+                'BREW',
+                '/english-breakfast',
+                data='start',
+                headers={'Content-Type': 'message/teapot'}
+            )
+
+        self.assertEqual(
+            response.status_code,
+            503
+        )
+        self.assertEqual(
+            response.content,
+            b'Pot is busy'
+        )
+
+    def test_stop_brew_english_breakfast_successfully(self):
+        self.request(
+            'BREW',
+            '/english-breakfast',
+            data='start',
+            headers={'Content-Type': 'message/teapot'}
+        )
+
+        response = self.request(
+            'BREW',
+            '/english-breakfast',
+            data='stop',
+            headers={'Content-Type': 'message/teapot'}
+        )
+
+        self.assertEqual(
+            response.status_code,
+            201
+        )
+        self.assertEqual(
+            response.content,
+            b'Finished'
+        )
+
+    def test_stop_brew_english_breakfast_but_its_not_started(self):
+        response = self.request(
+            'BREW',
+            '/english-breakfast',
+            data='stop',
+            headers={'Content-Type': 'message/teapot'}
+        )
+
+        self.assertEqual(
+            response.status_code,
+            400
+        )
+        self.assertEqual(
+            response.content,
+            b'No beverage is being brewed by this pot'
+        )
+
+    # Earl-grey
+    def test_start_brew_earl_grey_successfully(self):
+        responses = []
+        start_brew = lambda: responses.append(
+            self.request(
+                'BREW',
+                '/earl-grey',
+                data='start',
+                headers={'Content-Type': 'message/teapot'}
+            )
+        )
+        threads = [threading.Thread(target=start_brew) for _ in range(server.MIN_REQUESTS_COUNT)]
+        sleep_to_next_second()
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+
+        success_responses = list(filter(lambda r: r.status_code == 202, responses))
+
+        self.assertEqual(
+            len(success_responses),
+            1
+        )
+
+        response = success_responses[0]
+
+        self.assertEqual(
+            response.content,
+            b'Brewing'
+        )
+
+    def test_start_brew_earl_grey_but_its_busy(self):
+        responses = []
+        start_brew = lambda: responses.append(
+            self.request(
+                'BREW',
+                '/earl-grey',
+                data='start',
+                headers={'Content-Type': 'message/teapot'}
+            )
+        )
+        threads = [threading.Thread(target=start_brew) for _ in range(server.MIN_REQUESTS_COUNT)]
+        sleep_to_next_second()
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+
         response = self.request(
             'BREW',
             '/earl-grey',
@@ -206,9 +333,85 @@ class TestServer(unittest.TestCase):
 
         self.assertEqual(
             response.status_code,
-            424
+            503
         )
         self.assertEqual(
             response.content,
-            b'Traffic too low to brew "earl-grey" tea: 1/20'
+            b'Pot is busy'
+        )
+
+    def test_start_brew_earl_grey_but_traffic_is_too_low(self):
+        responses = []
+        start_brew = lambda: responses.append(
+            self.request(
+                'BREW',
+                '/earl-grey',
+                data='start',
+                headers={'Content-Type': 'message/teapot'}
+            )
+        )
+        threads = [threading.Thread(target=start_brew) for _ in range(server.MIN_REQUESTS_COUNT - 1)]
+        sleep_to_next_second()
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+
+        self.assertEqual(
+            len(responses),
+            server.MIN_REQUESTS_COUNT - 1
+        )
+
+        for response in responses:
+            self.assertEqual(
+                response.code,
+                424
+            )
+            self.assertIn(
+                b'Traffic too low to brew',
+                response.content
+            )
+
+    def test_stop_brew_earl_grey_successfully(self):
+        start_brew = lambda: self.request(
+            'BREW',
+            '/earl-grey',
+            data='start',
+            headers={'Content-Type': 'message/teapot'}
+        )
+
+        threads = [threading.Thread(target=start_brew) for _ in range(server.MIN_REQUESTS_COUNT)]
+        sleep_to_next_second()
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+
+        response = self.request(
+            'BREW',
+            '/earl-grey',
+            data='stop',
+            headers={'Content-Type': 'message/teapot'}
+        )
+
+        self.assertEqual(
+            response.status_code,
+            201
+        )
+        self.assertEqual(
+            response.content,
+            b'Finished'
+        )
+
+    def test_stop_brew_earl_grey_but_its_not_started(self):
+        response = self.request(
+            'BREW',
+            '/earl-grey',
+            data='stop',
+            headers={'Content-Type': 'message/teapot'}
+        )
+
+        self.assertEqual(
+            response.status_code,
+            400
+        )
+        self.assertEqual(
+            response.content,
+            b'No beverage is being brewed by this pot'
         )
