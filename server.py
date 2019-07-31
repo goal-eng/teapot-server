@@ -26,8 +26,6 @@ def create_alternates():
 TEA_ALTERNATES = create_alternates()
 
 # Runtime variables
-CURRENT_SECOND = 0
-CURRENT_REQUESTS_COUNT = 0
 TRAFFIC = {}
 
 
