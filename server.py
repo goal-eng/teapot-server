@@ -1,14 +1,16 @@
 # Based on https://tools.ietf.org/html/rfc7168
 import os
 import time
+import weakref
+import collections
 
 from japronto import Application
 import click
 
 
 # Configuration
-START_NUMBER = os.environ['START_NUMBER']
-MIN_REQUESTS_COUNT = os.environ['MIN_REQUEST_COUNT']
+START_NUMBER = int(os.environ['START_NUMBER'])
+MIN_REQUESTS_COUNT = int(os.environ['MIN_REQUESTS_COUNT'])
 TEA_CONTENT_TYPE = 'message/teapot'
 TEA_VARIANTS = [
     'english-breakfast',
@@ -26,34 +28,26 @@ def create_alternates():
 TEA_ALTERNATES = create_alternates()
 
 # Runtime variables
-TRAFFIC = {}
+TRAFFIC = weakref.WeakValueDictionary()
+CUR_SECOND_COUNTER = None  # used to keep reference
 
 
 def increase_traffic_by_request(request, tea_variant):
-    ip_data = TRAFFIC.get(request.remote_addr, None)
+    global CUR_SECOND_COUNTER
 
-    if ip_data is None:
-        ip_data = {}
-        TRAFFIC[request.remote_addr] = ip_data
+    cur_second_int = int(time.time())
+    request_key = f'{request.remote_addr}/{tea_variant}'
 
-    tea_data = ip_data.get(tea_variant, None)
-
-    if tea_data is None:
-        tea_data = {}
-        ip_data[tea_variant] = tea_data
-
-    last_recorded_second = tea_data.get('last_recorded_second', 0)
-    requests_count = tea_data.get('requests_count', 0)
-
-    cur_second = int(time.time())
-    if cur_second > last_recorded_second:
-        requests_count = 1
+    if cur_second_int not in TRAFFIC:
+        cur_second_counter = collections.Counter()
+        TRAFFIC[cur_second_int] = cur_second_counter
     else:
-        requests_count += 1
+        cur_second_counter = TRAFFIC[cur_second_int]
 
-    tea_data['request_count'] = requests_count
-    tea_data['last_recorded_second'] = cur_second
-    return requests_count
+    CUR_SECOND_COUNTER = cur_second_counter
+
+    cur_second_counter[request_key] += 1
+    return cur_second_counter[request_key]
 
 
 def slash(request):

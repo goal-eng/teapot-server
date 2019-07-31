@@ -1,11 +1,116 @@
 import unittest
 import subprocess
 import time
+import threading
 
 import requests
+import dotenv
 
 
-class TestFirst(unittest.TestCase):
+dotenv.load_dotenv('.env.test', override=True)
+
+
+import server
+
+
+class TestTrafficCounter(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        class FakeRequest:
+            def __init__(self, remote_addr):
+                self.remote_addr = remote_addr
+
+        cls.FakeRequest = FakeRequest
+
+    def sleep_to_next_second(self):
+        time_left_to_next_second = int(time.time() + 1) - time.time()
+        time.sleep(time_left_to_next_second)
+
+    def create_threads_to_increase_traffic(self, threads_count, request_ip, tea_variant, results_list):
+        return [
+            threading.Thread(
+                target=lambda: results_list.append(
+                    server.increase_traffic_by_request(self.FakeRequest(request_ip), tea_variant)
+                )
+            )
+            for _ in range(threads_count)
+        ]
+
+    def run_threads_with_next_second(self, threads):
+        self.sleep_to_next_second()
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+
+    def test_increase_by_single_client_single_variant(self):
+        threads_count = 10
+        results = []
+
+        threads = self.create_threads_to_increase_traffic(threads_count, '127.0.0.1', 'earl-gray', results)
+        self.run_threads_with_next_second(threads)
+
+        self.assertEqual(
+            len(results),
+            threads_count
+        )
+        self.assertEqual(
+            results,
+            list(range(1, threads_count + 1))
+        )
+        self.assertEqual(
+            len(server.TRAFFIC),
+            1
+        )
+
+    def test_increase_by_single_client_many_variants(self):
+        threads_count = 10
+        results = []
+
+        threads = [
+            *self.create_threads_to_increase_traffic(threads_count, '127.0.0.1', 'earl-gray', results),
+            *self.create_threads_to_increase_traffic(threads_count, '127.0.0.1', 'english-breakfast', results)
+        ]
+
+        self.run_threads_with_next_second(threads)
+
+        self.assertEqual(
+            len(results),
+            threads_count*2
+        )
+        self.assertEqual(
+            set(results),
+            set(range(1, threads_count + 1))
+        )
+        self.assertEqual(
+            len(server.TRAFFIC),
+            1
+        )
+
+    def test_increase_by_many_clients_single_variant(self):
+        threads_count = 10
+        results = []
+
+        threads = [
+            *self.create_threads_to_increase_traffic(threads_count, '127.0.0.1', 'earl-gray', results),
+            *self.create_threads_to_increase_traffic(threads_count, '127.0.0.2', 'earl-gray', results)
+        ]
+
+        self.run_threads_with_next_second(threads)
+
+        self.assertEqual(
+            len(results),
+            threads_count*2
+        )
+        self.assertEqual(
+            set(results),
+            set(range(1, threads_count + 1))
+        )
+        self.assertEqual(
+            len(server.TRAFFIC),
+            1
+        )
+
+
+class TestServer(unittest.TestCase):
     SERVER_EXE_PATH = 'server.py'
 
     @classmethod
