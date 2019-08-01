@@ -151,7 +151,7 @@ r.add_route('/{endpoint}', slash)
 @click.command()
 @click.option('--host', default='0.0.0.0')
 @click.option('--port', default='8080')
-@click.option('--worker_num', default=None)
+@click.option('--worker-num', default=None)
 @click.option('--debug', default=False, is_flag=True)
 def cli(host, port, worker_num, debug):
     click.echo('Starting server with following configuration:')
