@@ -2,8 +2,10 @@ import unittest
 import subprocess
 import time
 import threading
+import asyncio
 
 import requests
+from aiohttp import ClientSession
 import dotenv
 
 
@@ -114,20 +116,26 @@ class TestTrafficCounter(unittest.TestCase):
 class TestServer(unittest.TestCase):
     SERVER_EXE_PATH = 'server.py'
 
-    def setUp(self):
+    def setUp(self, worker_num=None, debug=True):
         self.host = '0.0.0.0'
         self.port = '9999'
         self.base_url = f'http://{self.host}:{self.port}'
 
-        server_process = subprocess.Popen(
-            args=[
-                'python',
-                'server.py',
-                f'--host={self.host}',
-                f'--port={self.port}',
-                '--debug'
-            ],
-        )
+        args = [
+            'python',
+            'server.py',
+            f'--host={self.host}',
+            f'--port={self.port}',
+        ]
+
+        if worker_num:
+            args.append(f'--worker-num={worker_num}')
+
+        if debug:
+            args.append('--debug')
+
+        server_process = subprocess.Popen(args=args)
+
         self.server_process = server_process
 
         for _ in range(100):
@@ -369,6 +377,43 @@ class TestServer(unittest.TestCase):
                 b'Traffic too low to brew',
                 response.content
             )
+
+    def test_start_brew_earl_grey_stress_test(self):
+        requests_count = 10000
+        server_workers = 10
+        max_expected_duration = 10
+
+        self.tearDown()
+        self.setUp(worker_num=server_workers, debug=False)
+
+        async def run():
+            url = f"{self.base_url}/earl-gray"
+            tasks = []
+
+            async with ClientSession() as session:
+                for _ in range(requests_count):
+                    task = asyncio.ensure_future(session.request('BREW', url, data='start'))
+                    tasks.append(task)
+
+                responses = asyncio.gather(*tasks)
+                await responses
+
+        loop = asyncio.get_event_loop()
+        future = asyncio.ensure_future(run())
+
+        start_time = time.time()
+        loop.run_until_complete(future)
+        duration = time.time() - start_time
+
+        request_per_second = requests_count / duration
+
+        print(f'\n!!! Stress test made {requests_count} in {duration:.3f} seconds ({request_per_second:.3f} requests '
+              f'per second, using server {server_workers} workers)')
+
+        self.assertLess(
+            duration,
+            max_expected_duration
+        )
 
     def test_stop_brew_earl_grey_successfully(self):
         start_brew = lambda: self.request(

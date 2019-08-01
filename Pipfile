@@ -11,6 +11,7 @@ click = "*"
 requests = "*"
 pyflakes = "*"
 python-dotenv = "*"
+aiohttp = "*"
 
 [requires]
 python_version = "3.6"
