@@ -60,7 +60,7 @@ def slash(request):
     endpoint = request.match_dict.get('endpoint', '')
 
     if request.method != 'BREW':
-        return request.Response(code=405, text='asdasdas')
+        return request.Response(code=405)
 
     if request.method == 'BREW':
 
