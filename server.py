@@ -8,15 +8,27 @@ from japronto import Application
 import click
 
 
-# Configuration
-START_NUMBER = int(os.environ['START_NUMBER'])
-MIN_REQUESTS_COUNT = int(os.environ['MIN_REQUESTS_COUNT'])
+# Configuration (load .env file if variables aren't present)
+for _ in range(2):
+    try:
+        START_NUMBER = int(os.environ['START_NUMBER'])
+        MIN_REQUESTS_COUNT = int(os.environ['MIN_REQUESTS_COUNT'])
+    except KeyError:
+        import dotenv
+        dotenv.load_dotenv('.env', override=True)
+    else:
+        break
+
+
 TEA_CONTENT_TYPE = 'message/teapot'
 TEA_VARIANTS = [
     'english-breakfast',
     'earl-grey',
 ]
 HIGH_TRAFFIC_VARIANT = 'earl-grey'
+
+with open('home.html') as home_html_file:
+    HOME_HTML_CONTENT = home_html_file.read()
 
 
 def create_alternates():
@@ -59,8 +71,12 @@ def slash(request):
 
     endpoint = request.match_dict.get('endpoint', '')
 
-    if request.method != 'BREW':
-        return request.Response(code=405)
+    if request.method == 'GET':
+        return request.Response(
+            code=200,
+            text=HOME_HTML_CONTENT,
+            headers={'Content-Type': 'text/html'}
+        )
 
     if request.method == 'BREW':
 
@@ -139,6 +155,9 @@ def slash(request):
                 code=503,
                 text=f'"{endpoint}" is not supported for this pot'
             )
+
+    else:
+        return request.Response(code=405)
 
 
 app = Application()
