@@ -159,7 +159,6 @@ class TestServer(unittest.TestCase):
         bad_requests = [
             # GET, PUT, HEAD, DELETE, OPTIONS, PATCH, and TRACE
             # methods are not acceptable HTCPCP verbs
-            self.request('GET', '/'),
             self.request('PUT', '/'),
             self.request('HEAD', '/'),
             self.request('DELETE', '/'),
@@ -175,6 +174,28 @@ class TestServer(unittest.TestCase):
             self.assertEqual(
                 response.status_code,
                 405
+            )
+
+    def test_get_returns_home_page(self):
+        with open('home.html', 'rb') as home_html_file:
+            expected_home_content = home_html_file.read()
+
+        for endpoint in ('/', '/whatever-endpoint'):
+            response = self.request(
+                'GET',
+                endpoint,
+            )
+            self.assertEqual(
+                response.status_code,
+                200
+            )
+            self.assertEqual(
+                response.headers.get('Content-Type'),
+                'text/plain; charset=utf-8, text/html'
+            )
+            self.assertEqual(
+                response.content,
+                expected_home_content
             )
 
     def test_brew_no_pot(self):
