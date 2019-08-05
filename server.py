@@ -3,6 +3,7 @@ import os
 import time
 import weakref
 import collections
+import multiprocessing
 
 from japronto import Application
 import click
@@ -13,6 +14,9 @@ for _ in range(2):
     try:
         START_NUMBER = int(os.environ['START_NUMBER'])
         MIN_REQUESTS_COUNT = int(os.environ['MIN_REQUESTS_COUNT'])
+        SERVER_HOST = os.environ['SERVER_HOST']
+        SERVER_PORT = os.environ['SERVER_PORT']
+        SERVER_WORKER_NUM = int(os.environ['SERVER_WORKER_NUM'])
     except KeyError:
         import dotenv
         dotenv.load_dotenv('.env', override=True)
@@ -25,7 +29,7 @@ TEA_VARIANTS = [
     'english-breakfast',
     'earl-grey',
 ]
-HIGH_TRAFFIC_VARIANT = 'earl-grey'
+HIGH_TRAFFIC_VARIANT = 'disabled-for-now'
 
 with open('home.html') as home_html_file:
     HOME_HTML_CONTENT = home_html_file.read()
@@ -41,7 +45,10 @@ def create_alternates():
 TEA_ALTERNATES = create_alternates()
 
 # Runtime variables
-POTS_BREWING = {variant: False for variant in TEA_VARIANTS}
+multiprocessing_manager = multiprocessing.Manager()
+
+POTS_BREWING = multiprocessing_manager.dict({variant: False for variant in TEA_VARIANTS})
+
 TRAFFIC = weakref.WeakValueDictionary()
 CUR_SECOND_COUNTER = None  # used to keep reference
 
@@ -96,7 +103,8 @@ def slash(request):
                     headers={'Alternates': TEA_ALTERNATES}
                 )
 
-            is_brewing = POTS_BREWING[endpoint]
+            brewing_key = f'{endpoint}/{request.remote_addr}'
+            is_brewing = POTS_BREWING.get(brewing_key, False)
 
             # Start brewing
             if request.body == b'start':
@@ -121,7 +129,7 @@ def slash(request):
                         )
 
                 # Successfully start brewing
-                POTS_BREWING[endpoint] = True
+                POTS_BREWING[brewing_key] = True
 
                 return request.Response(
                     code=202,
@@ -168,9 +176,9 @@ r.add_route('/{endpoint}', slash)
 
 
 @click.command()
-@click.option('--host', default='0.0.0.0')
-@click.option('--port', default='8080')
-@click.option('--worker-num', default=None)
+@click.option('--host', default=SERVER_HOST)
+@click.option('--port', default=SERVER_PORT)
+@click.option('--worker-num', default=SERVER_WORKER_NUM)
 @click.option('--debug', default=False, is_flag=True)
 def cli(host, port, worker_num, debug):
     click.echo('Starting server with following configuration:')

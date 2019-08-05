@@ -1,15 +1,6 @@
 # Reef Technologies recruitment task server 
 
-Possible instructions for the task:
-
-```
-TODO...
-
-Please findout which variant of tea may be brewed only when 
-there is high traffic (so try to start brewing each variant of tea).
-
-High traffic is counted separately for each second and IP address.  
-```
+Instructions for task may be found in `home.html` file.
 
 ## Quick start
 

@@ -12,6 +12,7 @@ requests = "*"
 pyflakes = "*"
 python-dotenv = "*"
 aiohttp = "*"
+psutil = "*"
 
 [requires]
 python_version = "3.6"
