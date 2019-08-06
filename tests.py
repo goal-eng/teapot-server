@@ -302,7 +302,7 @@ class TestServer(unittest.TestCase):
             'BREW',
             '/english-breakfast',
             data='stop',
-            headers={'Content-Type': 'message/teapot'}
+            headers={'Content-Type': 'message/teapot', 'Email': 'unittest@email.com'}
         )
 
         self.assertEqual(
