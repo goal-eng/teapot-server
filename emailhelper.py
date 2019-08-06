@@ -20,7 +20,7 @@ class GmailSender(namedtuple('SmtpAuthData', 'server port user password')):
 
     def send(self, addr_from, addr_to, subject, message, files=tuple()):
         msg = MIMEMultipart('alternative')
-        msg['To'] = addr_to
+        msg['To'] = addr_to if isinstance(addr_to, str) else ';'.join(addr_to)
         msg['From'] = addr_from
         msg['Subject'] = subject
 

@@ -4,9 +4,14 @@ import time
 import weakref
 import collections
 import multiprocessing
+import traceback
 
 from japronto import Application
 import click
+
+import emailhelper
+
+__version__ = 1.0
 
 
 # Configuration (load .env file if variables aren't present)
@@ -17,6 +22,9 @@ for _ in range(2):
         SERVER_HOST = os.environ['SERVER_HOST']
         SERVER_PORT = os.environ['SERVER_PORT']
         SERVER_WORKER_NUM = int(os.environ['SERVER_WORKER_NUM'])
+        SMTP_USER, SMTP_PASS, SMTP_SERVER, SMTP_PORT = os.environ['EMAIL_CREDS'].split(':')
+        SMTP_PORT = int(SMTP_PORT)
+        EMAIL_RECEIVER = [e for e in os.environ['EMAIL_RECEIVER'].split(';') if e]
     except KeyError:
         import dotenv
         dotenv.load_dotenv('.env', override=True)
@@ -43,6 +51,8 @@ def create_alternates():
 
 
 TEA_ALTERNATES = create_alternates()
+
+email_client = emailhelper.GmailSender(SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASS)
 
 # Runtime variables
 multiprocessing_manager = multiprocessing.Manager()
@@ -143,6 +153,29 @@ def slash(request):
                     return request.Response(
                         code=400,
                         text='No beverage is being brewed by this pot',
+                    )
+
+                client_email = request.headers.get('Email', '')
+
+                if not client_email:
+                    return request.Response(
+                        code=400,
+                        text='Please set "Email" header in your request to your email address'
+                    )
+
+                try:
+                    email_client.send(
+                        addr_from=SMTP_USER,
+                        addr_to=EMAIL_RECEIVER,
+                        subject=f'Someone has completed recruitment task v{__version__} - {client_email}',
+                        message=f'Candidate has successfully brewed tea {endpoint!r} from IP {request.remote_addr}, '
+                                f'using mail {client_email!r}.'
+                    )
+                except:
+                    print(traceback.format_exc())
+                    return request.Response(
+                        code=500,
+                        text='Something went wrong'
                     )
 
                 # Successfully stop brewing
