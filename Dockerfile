@@ -2,10 +2,12 @@ FROM python:3.6
 
 WORKDIR /
 
-COPY Pipfile Pipfile
-COPY Pipfile.lock Pipfile.lock
-COPY .env .env
-COPY server.py server.py
+COPY Pipfile .
+COPY Pipfile.lock .
+COPY .env .
+COPY server.py .
+COPY emailhelper.py .
+COPY home.html .
 
 RUN pip install pipenv
 RUN pipenv install --deploy
