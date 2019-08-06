@@ -39,9 +39,17 @@ class GmailSender(namedtuple('SmtpAuthData', 'server port user password')):
             )
             msg.attach(part)
 
-        s = smtplib.SMTP(self.server, self.port)
-        s.ehlo()
-        s.starttls()
+        # SSL
+        if self.port == 465:
+            s = smtplib.SMTP_SSL(self.server, self.port)
+            s.ehlo()
+        
+        # TLS
+        else:
+            s = smtplib.SMTP(self.server, self.port)
+            s.ehlo()
+            s.starttls()
+
         s.login(self.user, self.password)
         s.sendmail(addr_from, addr_to, msg.as_string())
         s.quit()
