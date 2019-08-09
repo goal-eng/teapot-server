@@ -45,6 +45,17 @@ static const char* reasons_4xx[] = {
   "Unsupported Media Type", //415
   "Requested Range Not Satisfiable", //416
   "Expectation Failed", //417
+  "I'm a teapot", //418
+  "HTTP_STATUS_MESSAGE_419", //419
+  "Enhance Your Calm", //420
+  "Misdirected Request", //421
+  "Unprocessable Entity", //422
+  "Locked", //423
+  "Failed Dependency", //424
+  "Too Early", //425
+  "Upgrade Required", //426
+  "HTTP_STATUS_MESSAGE_427", //427
+  "Precondition Required", //428
 };
 
 static const char* reasons_5xx[] = {
@@ -65,6 +76,6 @@ static const ReasonRange reason_ranges[] = {
   {reasons_1xx, 1},
   {reasons_2xx, 6},
   {reasons_3xx, 7},
-  {reasons_4xx, 17},
+  {reasons_4xx, 28},
   {reasons_5xx, 5}
 };
