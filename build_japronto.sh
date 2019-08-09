@@ -26,5 +26,8 @@ echo "Copy japronto builded from source"
 rm -rfd japronto
 cp -rfd japronto_build/src/japronto japronto
 
+echo "Remove japronto_build directory"
+rm -rfd japronto_build
+
 echo "Done!"
 
