@@ -1,8 +1,6 @@
 # Based on https://tools.ietf.org/html/rfc7168
 import os
 import time
-import weakref
-import collections
 import multiprocessing
 import traceback
 
@@ -11,7 +9,7 @@ import click
 
 import emailhelper
 
-__version__ = 1.0
+__version__ = '19.8.10'  # Year / Month / Day
 
 
 # Configuration (load .env file if variables aren't present)
@@ -37,7 +35,7 @@ TEA_VARIANTS = [
     'english-breakfast',
     'earl-grey',
 ]
-HIGH_TRAFFIC_VARIANT = 'disabled-for-now'
+HIGH_TRAFFIC_VARIANT = 'earl-grey'
 
 with open('home.html') as home_html_file:
     HOME_HTML_CONTENT = home_html_file.read()
@@ -55,12 +53,28 @@ TEA_ALTERNATES = create_alternates()
 email_client = emailhelper.GmailSender(SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASS)
 
 # Runtime variables
-multiprocessing_manager = multiprocessing.Manager()
+mp_manager = multiprocessing.Manager()
 
-POTS_BREWING = multiprocessing_manager.dict({variant: False for variant in TEA_VARIANTS})
+POTS_BREWING = mp_manager.dict({variant: False for variant in TEA_VARIANTS})
 
-TRAFFIC = weakref.WeakValueDictionary()
-CUR_SECOND_COUNTER = None  # used to keep reference
+TRAFFIC = mp_manager.dict()
+TRAFFIC_LOCK_INCREASE = mp_manager.Lock()
+TRAFFIC_LOCK_ADD_SECOND = mp_manager.Lock()
+TRAFFIC_LOCK_DEL_SECOND = mp_manager.Lock()
+
+
+def increase_or_set(lock, dict_obj, key, default):
+    lock.acquire()
+
+    if key in dict_obj:
+        value = dict_obj[key]
+        value += 1
+    else:
+        value = default
+
+    dict_obj[key] = value
+    lock.release()
+    return value
 
 
 def increase_traffic_by_request(request, tea_variant):
@@ -69,16 +83,29 @@ def increase_traffic_by_request(request, tea_variant):
     cur_second_int = int(time.time())
     request_key = f'{request.remote_addr}/{tea_variant}'
 
+    # Clear old seconds
+    if TRAFFIC_LOCK_DEL_SECOND.acquire():
+        for second in TRAFFIC.keys():
+            if second < cur_second_int:
+                del TRAFFIC[second]
+
+        TRAFFIC_LOCK_DEL_SECOND.release()
+
+    TRAFFIC_LOCK_ADD_SECOND.acquire()
     if cur_second_int not in TRAFFIC:
-        cur_second_counter = collections.Counter()
+        cur_second_counter = mp_manager.dict()
         TRAFFIC[cur_second_int] = cur_second_counter
     else:
         cur_second_counter = TRAFFIC[cur_second_int]
 
     CUR_SECOND_COUNTER = cur_second_counter
+    TRAFFIC_LOCK_ADD_SECOND.release()
 
-    cur_second_counter[request_key] += 1
-    return cur_second_counter[request_key]
+    request_traffic = increase_or_set(TRAFFIC_LOCK_INCREASE, cur_second_counter, request_key, 1)
+
+    # print(f'Increasing {request_key!r} from value {request_traffic} (second {cur_second_int})')
+
+    return request_traffic
 
 
 def slash(request):

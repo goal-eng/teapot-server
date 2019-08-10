@@ -34,10 +34,39 @@
         </p>
 
         <p>
-            Please <strong>brew a tea</strong> (no matter which one) using this server according to
+            Please <strong>brew a tea</strong> using this server according to
             <strong>HTCPCP-TEA</strong> (refer to <a href="https://tools.ietf.org/html/rfc7168">RFC-7168</a>).
-            The protocol is a bit modified, so it is <strong>required to pass your email address</strong> as
-            <span class="code-format">Email</span> header when brewing is stopped.
+            The protocol is a bit modified.
+        </p>
+
+        <h4>Instructions:</h4>
+        <p>
+            <ol>
+                <li>
+                    Find a special <strong>tea variant</strong>, which has additional <strong>traffic requirement</strong>
+                    to be brewed
+                    (it will return HTTP code <strong>424</strong> when you will try to <strong>start to brew</strong> it).
+                </li>
+                <li>
+                    Successfully start to brew a special variant of tea, fulfilling the traffic requirements.
+                </li>
+                <li>
+                    Stop started brewing and <strong>provide your email</strong> address while stopping,
+                    using <span class="code-format">Email</span> header (our recruitment team will get notified about your application).
+                </li>
+            </ol>
+        </p>
+
+        <h4>Hints:</h4>
+        <p>
+            <ul>
+                <li>
+                    Traffic is measured separately for each second, tea variant and IP address
+                </li>
+                <li>
+                    Search for example implementations of protocol to find out how to use it
+                </li>
+            </ul>
         </p>
     </div>
 
