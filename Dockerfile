@@ -8,6 +8,7 @@ COPY .env .
 COPY server.py .
 COPY emailhelper.py .
 COPY home.html .
+COPY japronto .
 
 RUN pip install pipenv
 RUN pipenv install --deploy
