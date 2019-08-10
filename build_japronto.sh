@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 
-if -f "japronto_repo"
+if [[ -d "japronto_repo" ]]
 then
     echo "Repository already cloned to japronto_repo"
 else
