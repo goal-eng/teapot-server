@@ -1,6 +1,7 @@
 import unittest
 import time
 import threading
+import multiprocessing
 import asyncio
 
 import requests
@@ -29,35 +30,35 @@ class TestTrafficCounter(unittest.TestCase):
 
         cls.FakeRequest = FakeRequest
 
-    def create_threads_to_increase_traffic(self, threads_count, request_ip, tea_variant, results_list):
+    def create_processes_to_increase_traffic(self, processes_count, request_ip, tea_variant, results_list):
         return [
-            threading.Thread(
+            multiprocessing.Process(
                 target=lambda: results_list.append(
                     server.increase_traffic_by_request(self.FakeRequest(request_ip), tea_variant)
                 )
             )
-            for _ in range(threads_count)
+            for _ in range(processes_count)
         ]
 
-    def run_threads_with_next_second(self, threads):
+    def run_processes_with_next_second(self, processes):
         sleep_to_next_second()
-        [t.start() for t in threads]
-        [t.join() for t in threads]
+        [t.start() for t in processes]
+        [t.join() for t in processes]
 
     def test_increase_by_single_client_single_variant(self):
-        threads_count = 10
-        results = []
+        processes_count = 10
+        results = multiprocessing.Manager().list()
 
-        threads = self.create_threads_to_increase_traffic(threads_count, '127.0.0.1', 'earl-gray', results)
-        self.run_threads_with_next_second(threads)
+        processes = self.create_processes_to_increase_traffic(processes_count, '127.0.0.1', 'earl-gray', results)
+        self.run_processes_with_next_second(processes)
 
         self.assertEqual(
             len(results),
-            threads_count
+            processes_count
         )
         self.assertEqual(
-            results,
-            list(range(1, threads_count + 1))
+            sorted(results),
+            list(range(1, processes_count + 1))
         )
         self.assertEqual(
             len(server.TRAFFIC),
@@ -65,23 +66,23 @@ class TestTrafficCounter(unittest.TestCase):
         )
 
     def test_increase_by_single_client_many_variants(self):
-        threads_count = 10
-        results = []
+        processes_count = 10
+        results = multiprocessing.Manager().list()
 
-        threads = [
-            *self.create_threads_to_increase_traffic(threads_count, '127.0.0.1', 'earl-gray', results),
-            *self.create_threads_to_increase_traffic(threads_count, '127.0.0.1', 'english-breakfast', results)
+        processes = [
+            *self.create_processes_to_increase_traffic(processes_count, '127.0.0.1', 'earl-gray', results),
+            *self.create_processes_to_increase_traffic(processes_count, '127.0.0.1', 'english-breakfast', results)
         ]
 
-        self.run_threads_with_next_second(threads)
+        self.run_processes_with_next_second(processes)
 
         self.assertEqual(
             len(results),
-            threads_count*2
+            processes_count*2
         )
         self.assertEqual(
             set(results),
-            set(range(1, threads_count + 1))
+            set(range(1, processes_count + 1))
         )
         self.assertEqual(
             len(server.TRAFFIC),
@@ -89,28 +90,50 @@ class TestTrafficCounter(unittest.TestCase):
         )
 
     def test_increase_by_many_clients_single_variant(self):
-        threads_count = 10
-        results = []
+        processes_count = 10
+        results = multiprocessing.Manager().list()
 
-        threads = [
-            *self.create_threads_to_increase_traffic(threads_count, '127.0.0.1', 'earl-gray', results),
-            *self.create_threads_to_increase_traffic(threads_count, '127.0.0.2', 'earl-gray', results)
+        processes = [
+            *self.create_processes_to_increase_traffic(processes_count, '127.0.0.1', 'earl-gray', results),
+            *self.create_processes_to_increase_traffic(processes_count, '127.0.0.2', 'earl-gray', results)
         ]
 
-        self.run_threads_with_next_second(threads)
+        self.run_processes_with_next_second(processes)
 
         self.assertEqual(
             len(results),
-            threads_count*2
+            processes_count*2
         )
         self.assertEqual(
             set(results),
-            set(range(1, threads_count + 1))
+            set(range(1, processes_count + 1))
         )
         self.assertEqual(
             len(server.TRAFFIC),
             1
         )
+
+    def test_increase_deletes_old_seconds(self):
+        results = multiprocessing.Manager().list()
+
+        for _ in range(3):
+            time.sleep(1)
+
+            self.create_processes_to_increase_traffic(1, '127.0.0.1', 'earl-gray', results)
+
+            # Only 1 second in traffic recorded
+            self.assertEqual(
+                len(server.TRAFFIC),
+                1
+            )
+
+            traffic_key = next(iter(server.TRAFFIC.keys()))
+
+            # Only 1 variant in given second
+            self.assertEqual(
+                len(server.TRAFFIC[traffic_key]),
+                1
+            )
 
 
 class TestServer(unittest.TestCase):
@@ -118,7 +141,12 @@ class TestServer(unittest.TestCase):
     SERVER_TEST_PORT = 10000
 
     def setUp(self, worker_num=None, debug=True):
-        psutil.net_connections()
+
+        def non_op_func(*args, **kwargs):
+            pass
+
+        server.email_client.send = non_op_func
+
         self.host = server.SERVER_HOST
         self.port = self.SERVER_TEST_PORT
         self.__class__.SERVER_TEST_PORT += 1
@@ -332,7 +360,6 @@ class TestServer(unittest.TestCase):
         )
 
     # Earl-grey
-    @unittest.skip
     def test_start_brew_earl_grey_successfully(self):
         responses = []
         start_brew = lambda: responses.append(
@@ -362,7 +389,6 @@ class TestServer(unittest.TestCase):
             b'Brewing'
         )
 
-    @unittest.skip
     def test_start_brew_earl_grey_but_its_busy(self):
         responses = []
         start_brew = lambda: responses.append(
@@ -394,7 +420,6 @@ class TestServer(unittest.TestCase):
             b'Pot is busy'
         )
 
-    @unittest.skip
     def test_start_brew_earl_grey_but_traffic_is_too_low(self):
         responses = []
         start_brew = lambda: responses.append(
@@ -415,15 +440,28 @@ class TestServer(unittest.TestCase):
             server.MIN_REQUESTS_COUNT - 1
         )
 
+        expected_messages = [
+            f'Traffic too low to brew "earl-grey" tea: {traffic}/{server.MIN_REQUESTS_COUNT}'
+            for traffic in range(1, server.MIN_REQUESTS_COUNT)
+        ]
+
         for response in responses:
+
             self.assertEqual(
-                response.code,
+                response.status_code,
                 424
             )
             self.assertIn(
-                b'Traffic too low to brew',
-                response.content
+                response.text,
+                expected_messages
             )
+
+            expected_messages = list(filter(lambda msg: msg != response.text, expected_messages))
+
+        self.assertEqual(
+            expected_messages,
+            []
+        )
 
     def test_start_brew_earl_grey_stress_test(self):
         requests_count = 10000
@@ -463,7 +501,6 @@ class TestServer(unittest.TestCase):
             max_expected_duration
         )
 
-    @unittest.skip
     def test_stop_brew_earl_grey_successfully(self):
         start_brew = lambda: self.request(
             'BREW',
@@ -481,7 +518,7 @@ class TestServer(unittest.TestCase):
             'BREW',
             '/earl-grey',
             data='stop',
-            headers={'Content-Type': 'message/teapot'}
+            headers={'Content-Type': 'message/teapot', 'Email': 'patryk.stachurski@reef.pl'}
         )
 
         self.assertEqual(
