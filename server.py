@@ -54,12 +54,25 @@ email_client = emailhelper.GmailSender(SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_P
 # Runtime variables
 mp_manager = multiprocessing.Manager()
 
-POTS_BREWING = mp_manager.dict({variant: False for variant in TEA_VARIANTS})
+POTS_BREWING = mp_manager.dict()
 
 TRAFFIC = mp_manager.dict()
 TRAFFIC_LOCK_INCREASE = mp_manager.Lock()
 TRAFFIC_LOCK_ADD_SECOND = mp_manager.Lock()
 TRAFFIC_LOCK_DEL_SECOND = mp_manager.Lock()
+
+
+def get_request_key(request):
+    endpoint = request.match_dict.get('endpoint', '')
+    return f'{request.remote_addr}/{endpoint}'
+
+
+def set_brewing_state(request, brewing_state):
+    POTS_BREWING[get_request_key(request)] = brewing_state
+
+
+def get_brewing_state(request):
+    return POTS_BREWING.get(get_request_key(request), False)
 
 
 def increase_or_set(lock, dict_obj, key, default):
@@ -76,13 +89,11 @@ def increase_or_set(lock, dict_obj, key, default):
     return value
 
 
-def increase_traffic_by_request(request, tea_variant):
-    global CUR_SECOND_COUNTER
-
+def increase_traffic_by_request(request):
     cur_second_int = int(time.time())
-    request_key = f'{request.remote_addr}/{tea_variant}'
+    request_key = get_request_key(request)
 
-    # Clear old seconds
+    # Clear old seconds (only if it's not already being cleared)
     if TRAFFIC_LOCK_DEL_SECOND.acquire():
         for second in TRAFFIC.keys():
             if second < cur_second_int:
@@ -91,13 +102,14 @@ def increase_traffic_by_request(request, tea_variant):
         TRAFFIC_LOCK_DEL_SECOND.release()
 
     TRAFFIC_LOCK_ADD_SECOND.acquire()
+    # First time handling current second
     if cur_second_int not in TRAFFIC:
         cur_second_counter = mp_manager.dict()
         TRAFFIC[cur_second_int] = cur_second_counter
+    # Another time handling current second
     else:
         cur_second_counter = TRAFFIC[cur_second_int]
 
-    CUR_SECOND_COUNTER = cur_second_counter
     TRAFFIC_LOCK_ADD_SECOND.release()
 
     request_traffic = increase_or_set(TRAFFIC_LOCK_INCREASE, cur_second_counter, request_key, 1)
@@ -139,8 +151,7 @@ def slash(request):
                     headers={'Alternates': TEA_ALTERNATES}
                 )
 
-            brewing_key = f'{endpoint}/{request.remote_addr}'
-            is_brewing = POTS_BREWING.get(brewing_key, False)
+            is_brewing = get_brewing_state(request)
 
             # Start brewing
             if request.body == b'start':
@@ -154,7 +165,7 @@ def slash(request):
 
                 # Make sure there is enough traffic for high traffic pot
                 if endpoint == HIGH_TRAFFIC_VARIANT:
-                    traffic = increase_traffic_by_request(request, tea_variant=endpoint)
+                    traffic = increase_traffic_by_request(request)
 
                     if traffic < MIN_REQUESTS_COUNT:
                         # FIXME: uvloop is unable to return status code 424
@@ -165,7 +176,7 @@ def slash(request):
                         )
 
                 # Successfully start brewing
-                POTS_BREWING[brewing_key] = True
+                set_brewing_state(request, True)
 
                 return request.Response(
                     code=202,
@@ -205,7 +216,7 @@ def slash(request):
                     )
 
                 # Successfully stop brewing
-                POTS_BREWING[endpoint] = False
+                set_brewing_state(request, False)
 
                 return request.Response(
                     code=201,
