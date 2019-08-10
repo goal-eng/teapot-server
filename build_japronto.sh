@@ -19,7 +19,7 @@ rsync -avh japronto_diff/ japronto_build/
 
 echo "Build japronto..."
 cd japronto_build
-python build.py
+python3 build.py
 cd ..
 
 echo "Copy japronto builded from source"
