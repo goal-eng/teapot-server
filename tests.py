@@ -21,20 +21,18 @@ def sleep_to_next_second():
     time.sleep(time_left_to_next_second)
 
 
+class FakeRequest:
+    def __init__(self, remote_addr, endpoint):
+        self.remote_addr = remote_addr
+        self.match_dict = {'endpoint': endpoint}
+
+
 class TestTrafficCounter(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        class FakeRequest:
-            def __init__(self, remote_addr):
-                self.remote_addr = remote_addr
-
-        cls.FakeRequest = FakeRequest
-
     def create_processes_to_increase_traffic(self, processes_count, request_ip, tea_variant, results_list):
         return [
             multiprocessing.Process(
                 target=lambda: results_list.append(
-                    server.increase_traffic_by_request(self.FakeRequest(request_ip), tea_variant)
+                    server.increase_traffic_by_request(FakeRequest(request_ip, tea_variant))
                 )
             )
             for _ in range(processes_count)
@@ -134,6 +132,60 @@ class TestTrafficCounter(unittest.TestCase):
                 len(server.TRAFFIC[traffic_key]),
                 1
             )
+
+
+class TestPotsState(unittest.TestCase):
+    def setUp(self):
+        self.earl_grey_request = FakeRequest('127.0.0.1', 'earl-grey')
+        self.earl_grey_another_request = FakeRequest('127.0.0.2', 'earl-grey')
+        self.english_breakfast_request = FakeRequest('127.0.0.1', 'english-breakfast')
+
+    def test_initial_state(self):
+        self.assertEqual(
+            server.get_brewing_state(self.earl_grey_request),
+            False
+        )
+        self.assertEqual(
+            server.get_brewing_state(self.earl_grey_another_request),
+            False
+        )
+        self.assertEqual(
+            server.get_brewing_state(self.english_breakfast_request),
+            False
+        )
+
+    def test_start_brewing(self):
+        server.set_brewing_state(self.earl_grey_request, True)
+
+        self.assertEqual(
+            server.get_brewing_state(self.earl_grey_request),
+            True
+        )
+        self.assertEqual(
+            server.get_brewing_state(self.earl_grey_another_request),
+            False
+        )
+        self.assertEqual(
+            server.get_brewing_state(self.english_breakfast_request),
+            False
+        )
+
+    def test_stop_brewing(self):
+        server.set_brewing_state(self.earl_grey_request, True)
+        server.set_brewing_state(self.earl_grey_request, False)
+
+        self.assertEqual(
+            server.get_brewing_state(self.earl_grey_request),
+            False
+        )
+        self.assertEqual(
+            server.get_brewing_state(self.earl_grey_another_request),
+            False
+        )
+        self.assertEqual(
+            server.get_brewing_state(self.english_breakfast_request),
+            False
+        )
 
 
 class TestServer(unittest.TestCase):
