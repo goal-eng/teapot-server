@@ -15,7 +15,6 @@ __version__ = '19.8.10'  # Year / Month / Day
 # Configuration (load .env file if variables aren't present)
 for _ in range(2):
     try:
-        START_NUMBER = int(os.environ['START_NUMBER'])
         MIN_REQUESTS_COUNT = int(os.environ['MIN_REQUESTS_COUNT'])
         SERVER_HOST = os.environ['SERVER_HOST']
         SERVER_PORT = os.environ['SERVER_PORT']
@@ -196,7 +195,7 @@ def slash(request):
                         addr_to=EMAIL_RECEIVER,
                         subject=f'Someone has completed recruitment task v{__version__} - {client_email}',
                         message=f'Candidate has successfully brewed tea {endpoint!r} from IP {request.remote_addr}, '
-                                f'using mail {client_email!r}.'
+                                f'using mail {client_email!r} and host {request.headers.get("Host", "Unknown")!r}.'
                     )
                 except:
                     print(traceback.format_exc())
